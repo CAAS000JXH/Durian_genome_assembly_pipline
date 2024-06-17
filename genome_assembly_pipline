@@ -1,0 +1,41 @@
+### 1. Genome Survey Analysis
+# Convert clean_fastq files to fasta files
+$ seqkit fq2fa Illumina_1.clean.fq.gz -o Illumina_1.fasta
+$ seqkit fq2fa Illumina-1a_2.clean.fq.gz -o Illumina_2.fasta
+# Reverse complement clean_2.fasta
+$ seqkit seq Illumina_2.fasta -r -p > Illumina.rp.fasta
+# Merge sequences
+$ cat Illumina_1.fasta Illumina_2.rp.fasta > Illumina.fasta
+# Calculate k-mer
+$ jellyfish count -C -m 21 -s 4G -t 8 Illumina.fasta -o Illumina.kmer21.out
+$ jellyfish histo Illumina.kmer21.out -o Illumina.kmer21.histo
+# Plot the result
+$ genomescope.R -i Illumina.kmer21.histo -o genomescope -p 2 -k 21
+### 2. Genome Draft Assembly
+$ hifiasm -o asm -t48 --h1 hic_clean_1.fq.gz --h2 hic_clean_2.fq.gz hifi.fastq.gz --ul ONT.fastq.gz
+$ awk '/^S/{print ">"$2;print $3}' asm.hic.hap1.p_ctg.gfa > hap1.fa
+$ awk '/^S/{print ">"$2;print $3}' asm.hic.hap2.p_ctg.gfa > hap2.fa
+### 3. Chromosome Scaffolding with 3D-DNA
+$ mkdir 3D-DNA_hap1 && cd 3D-DNA_hap1
+$ mkdir ref fastq
+$ cp /path/to/hap1.fa ref/hap1.contigs.fasta
+$ ln -s /path/to/hic_clean_1.fq.gz fastq/hic_R1.fastq.gz
+$ ln -s /path/to/hic_clean_2.fq.gz fastq/hic_R2.fastq.gz
+$ bwa index ref/hap1.contigs.fasta
+$ python /opt/juicer/misc/generate_site_positions.py  DpnII  hap1  ref/hap1.contigs.fasta
+$ awk 'BEGIN{OFS="\t"}{print $1, $NF}' hap1_DpnII.txt > hap1.chrom.sizes
+$ juicer.sh -g hap1 -s DpnII -z ref/hap1.contigs.fasta -y hap1_DpnII.txt -p hap1.chrom.sizes -t 48
+$ bash /path/to/3d-dna-201008/run-asm-pipeline.sh -m haploid -r 2 ref/hap1.contigs.fasta aligned/merged_nodups.txt 
+# Use Juicebox_1.11.08 software for manual correction, then run 3D-DNA again.
+$ bash /path/to/3d-dna-201008/run-asm-pipeline-post-review.sh -r hap1.contigs.rawchrom.review.assembly ref/hap1.contigs.fasta aligned/merged_nodups.txt
+# Similarly, perform chromosome scaffolding for the hap2 genome draft using the above code.
+# Extract the top 28 HiC scaffold sequences with the best continuity, sorted by length, and name them hap1.scaffolds.fasta and hap2.scaffolds.fasta respectively.
+### 4. Assembly with AssemblyMapper
+# Reassemble hap1 contigs using hap1.scaffolds.fasta as the reference genome
+$ python3 quartet.py AssemblyMapper -r hap1.scaffolds.fasta -q kanyao.hap1.fa -p hap1 --plot -t 48 -i 99
+# Fill gaps using ONT sequencing data
+$ python3 quartet.py GapFiller -d hap1.draftgenome.fasta  -g ONT.fasta -p hap1 -t 48
+# Perform telomere analysis
+$ tidk search hap1.genome.filled.fasta --string AAACCCT --output hap1.genome.filled.search --dir . --extension tsv
+$ tidk plot --tsv hap1.genome.filled.search_telomeric_repeat_windows.tsv --output hap1.genome.filled.Telo
+### Then extract chromosomes, adjust their orientation, and rename them to obtain the final result. Similarly, refer to the above code for assembling the hap2 genome.
