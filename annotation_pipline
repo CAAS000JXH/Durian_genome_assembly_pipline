@@ -1,4 +1,12 @@
-### Step 1: De_novo annotation
+### Step 1: Repeat sequence annotation and masking
+$ BuildDatabase -name hap1db hap1.genome.fasta  
+$ RepeatModeler -database hap1db 
+$ RepeatMasker -nolow -no_is -norna -e rmblast -xsmall -lib hap1db-families.fa -pa 40 hap1.genome.fasta -a -inv -gff 
+$ buildSummary.pl hap1.genome.fasta.out > hap1.buildSummary.tbl 
+$ calcDivergenceFromAlign.pl  -s callip.divsum hap1.genome.fasta.align
+$ createRepeatLandscape.pl -div callip.divsum -g 480000000 > RepeatLandscape.html
+
+### Step 2: De_novo annotation
 $ mkdir BRAKER_hap1 && cd BRAKER_hap1
 $ hisat2-build -p 45 hap1.genome.fasta.masked hap1
 $ hisat2 -p 45 -x hap1 -1 RNAseq_1.clean.fq.gz -2 RNAseq_2.clean.fq.gz -S hap1.rna.sam
@@ -6,13 +14,13 @@ $ samtools sort --threads 45 -m 4G -o hap1.rna.sort.bam hap1.rna.sam
 $ samtools index hap1.rna.sort.bam
 $ /path/to/BRAKER/scripts/braker.pl --species=hap1 --genome=hap1.genome.fasta.masked --bam=hap1.rna.sort.bam --prot_seq=arabidopsis_pep_20101214.fa --prg=gth --gth2traingenes --cores 40 --softmasking --workingdir=. --gff3
 
-### Step 2: Homology-based annotation
+### Step 3: Homology-based annotation
 $ mkdir gth_hap1 && cd gth_hap1
 $  gth -translationtable 1 -force -gff3out -intermediate -protein \
 GCF_002303985.1_Duzib1.0_protein.addstop.faa.gz -genomic hap1.genome.fasta \
 -o ./hap1.gth.gff3
 
-### Step 3: Transcriptome-based annotation
+### Step 4: Transcriptome-based annotation
 $ mkdir PASA_hap1 && cd PASA_hap1
 $ cp /path/to/PASApipeline/pasa_conf/pasa.alignAssembly.Template.txt alignAssembly.hap1.config
 
@@ -28,7 +36,7 @@ $ /path/to/PASApipeline/scripts/Load_Current_Gene_Annotations.dbi -c alignAssemb
 $ cp /path/to/PASApipeline/pasa_conf/pasa.annotationCompare.Template.txt ./annotCompare.hap1.config
 $/path/to/PASApipeline/Launch_PASA_pipeline.pl -c annotCompare.hap1.config -A -g hap1.genome.fasta -t isoseq.fasta
 
-### Step 4: Merge and Update - Incorporate UTR and Alternative Splicing Information
+### Step 5: Merge and Update - Incorporate UTR and Alternative Splicing Information
 $ ln /path/to/BRAKER_hap1/braker.gff3 .
 $  /path/to/EVidenceModeler/EvmUtils/gff3_gene_prediction_file_validator.pl braker.gff3
 $ ln /path/to/gth_hap1/hap1.gth.gff3 .
