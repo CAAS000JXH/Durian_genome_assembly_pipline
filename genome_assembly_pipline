@@ -11,11 +11,50 @@ $ jellyfish count -C -m 21 -s 4G -t 8 Illumina.fasta -o Illumina.kmer21.out
 $ jellyfish histo Illumina.kmer21.out -o Illumina.kmer21.histo
 # Plot the result
 $ genomescope.R -i Illumina.kmer21.histo -o genomescope -p 2 -k 21
-### 2. Genome Draft Assembly
-$ hifiasm -o asm -t48 --h1 hic_clean_1.fq.gz --h2 hic_clean_2.fq.gz hifi.fastq.gz --ul ONT.fastq.gz
+
+### 2. Sequencing data filtering
+#  Illumina reads and Hi-C reads were filtered with the default parameters of fastp (v0.20.0) software. HiFi and ONT reads were filtered using Filtlong (https://github.com/rrwick/Filtlong) software, retaining reads longer than 12 kb and 30 kb with quality scores above 90% to avoid possible errors, respectively.
+$ filtlong --min_length 30000 --keep_percent 90 ONT.raw.fastq.gz | gzip > ONT_reads.fastq.gz
+$ filtlong --min_length 12000 --keep_percent 90 hifi.raw.fastq.gz | gzip > hifi_reads.fastq.gz
+
+### 3. Assessment of Sequencing Data Saturation
+# Randomly extract 10× sequencing data
+$ seqkit sample -n 527134 -s 11 hifi_reads.fastq.gz -o 10×.hifi_reads.fastq.gz
+$ seqkit stat 10×.hifi_reads.fastq.gz
+# Randomly extract 30× sequencing data
+$ seqkit sample -n 1581402 -s 11 hifi_reads.fastq.gz -o 30×.hifi_reads.fastq.gz
+$ seqkit stat 30×.hifi_reads.fastq.gz
+# Randomly extract 50× sequencing data
+$ seqkit sample -n 2635670 -s 11 hifi.total.fastq.gz -o 50×.hifi_reads.fastq.gz
+$ seqkit stat 50×.hifi_reads.fastq.gz
+# Randomly extract 70× sequencing data
+$ seqkit sample -n 3689938 -s 11 hifi.total.fastq.gz -o 70×.hifi_reads.fastq.gz
+$ seqkit stat 70×.hifi_reads.fastq.gz
+# Randomly extract 90× sequencing data
+$ seqkit sample -n 4744206 -s 11 hifi.total.fastq.gz -o 90×.hifi_reads.fastq.gz
+$ seqkit stat 90×.hifi_reads.fastq.gz
+# Perform assembly using the hifiasm software respectively.
+$ hifiasm -o 10 -t32 10×.hifi_reads.fastq.gz
+$ hifiasm -o 30 -t32 30×.hifi_reads.fastq.gz
+$ hifiasm -o 50 -t32 50×.hifi_reads.fastq.gz
+$ hifiasm -o 70 -t32 70×.hifi_reads.fastq.gz
+$ hifiasm -o 90 -t32 90×.hifi_reads.fastq.gz
+$ hifiasm -o 110 -t32 hifi_reads.fastq.gz
+$ awk '/^S/{print ">"$2;print $3}' 10.bp.p_ctg.gfa > 10.p.fa
+$ awk '/^S/{print ">"$2;print $3}' 30.bp.p_ctg.gfa > 30.p.fa
+$ awk '/^S/{print ">"$2;print $3}' 50.bp.p_ctg.gfa > 50.p.fa
+$ awk '/^S/{print ">"$2;print $3}' 70.bp.p_ctg.gfa > 70.p.fa
+$ awk '/^S/{print ">"$2;print $3}' 90.bp.p_ctg.gfa > 90.p.fa
+$ awk '/^S/{print ">"$2;print $3}' 110.bp.p_ctg.gfa > 110.p.fa
+Subsequently, use QUAST and BUSCO to analyze the genome size, N50, and completeness of the assembly results at different coverages. For example:
+$ quast -o QUAST_10 10.p.fa
+$ busco -i 10.p.fa -o busco_10 -l embryophyta_odb10 -m genome
+
+### 4. Genome Draft Assembly
+$ hifiasm -o asm -t48 --h1 hic_clean_1.fq.gz --h2 hic_clean_2.fq.gz hifi_reads.fastq.gz --ul ONT_reads.fastq.gz
 $ awk '/^S/{print ">"$2;print $3}' asm.hic.hap1.p_ctg.gfa > hap1.fa
 $ awk '/^S/{print ">"$2;print $3}' asm.hic.hap2.p_ctg.gfa > hap2.fa
-### 3. Chromosome Scaffolding with 3D-DNA
+### 5. Chromosome Scaffolding with 3D-DNA
 $ mkdir 3D-DNA_hap1 && cd 3D-DNA_hap1
 $ mkdir ref fastq
 $ cp /path/to/hap1.fa ref/hap1.contigs.fasta
@@ -30,7 +69,7 @@ $ bash /path/to/3d-dna-201008/run-asm-pipeline.sh -m haploid -r 2 ref/hap1.conti
 $ bash /path/to/3d-dna-201008/run-asm-pipeline-post-review.sh -r hap1.contigs.rawchrom.review.assembly ref/hap1.contigs.fasta aligned/merged_nodups.txt
 # Similarly, perform chromosome scaffolding for the hap2 genome draft using the above code.
 # Extract the top 28 HiC scaffold sequences with the best continuity, sorted by length, and name them hap1.scaffolds.fasta and hap2.scaffolds.fasta respectively.
-### 4. Assembly with AssemblyMapper
+### 6. Assembly with AssemblyMapper
 # Reassemble hap1 contigs using hap1.scaffolds.fasta as the reference genome
 $ python3 quartet.py AssemblyMapper -r hap1.scaffolds.fasta -q kanyao.hap1.fa -p hap1 --plot -t 48 -i 99
 # Fill gaps using ONT sequencing data
